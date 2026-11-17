@@ -1,0 +1,11 @@
+# Kaggle-side working directory noise (not the published results)
+runs/
+*.meta.json
+__pycache__/
+*.pyc
+.cache/
+*.pt
+.venv/
+
+# Keep: runs_backup/*.jsonl (the real published raw logs) and vectors/*.npz (the locked vectors)
+BOOST2_REVISED_PLAN.md

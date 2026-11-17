@@ -1,0 +1,14 @@
+SteerGate
+Copyright 2026 yaad25
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this project except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Full license text: see LICENSE in this repository.
+
+Third-party:
+- Evaluated/replicated steering vectors (e.g. DenseSteer) remain under their own licenses.
+  Their released .pt files are pickles; convert only in a disposable, offline sandbox.

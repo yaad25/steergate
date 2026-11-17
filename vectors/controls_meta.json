@@ -1,0 +1,9 @@
+{
+ "layer": 16,
+ "target_norm": 1.3732554912567139,
+ "n_pairs": 118,
+ "n_pairs_expected_from_gate1_5": 118,
+ "match": true,
+ "random_vector_path": "vectors/Qwen_Qwen2.5-1.5B-Instruct_ctrl_random.npz",
+ "shuffled_vector_path": "vectors/Qwen_Qwen2.5-1.5B-Instruct_ctrl_shuffled.npz"
+}

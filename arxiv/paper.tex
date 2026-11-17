@@ -1,0 +1,304 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{authblk}
+\usepackage{float}
+
+\title{Does Activation Steering Improve Mathematical Reasoning?\\
+A Controlled Replication on Qwen2.5-1.5B-Instruct}
+\author{yaad25 (h2rn)}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Activation steering---adding a direction vector to a language model's residual stream at
+inference time---has been proposed as a training-free way to improve multi-step reasoning in
+small language models (e.g., DenseSteer; Ouyang et al., 2026). We run a pre-registered,
+controlled replication of an on-policy steering recipe on \texttt{Qwen2.5-1.5B-Instruct} and
+GSM8K, using a frozen statistical protocol with paired sampling, two independent controls (a
+random direction and a shuffled-pair direction, both norm-matched), and a prompt-only baseline.
+Across the full 1{,}319-question test set ($k=8$ samples, 10{,}000-resample paired bootstrap),
+the steering vector does not improve accuracy over the unsteered model (lift $-1.24$ points, 95\%
+CI $[-1.86, -0.64]$) and fails to beat even a random-direction control ($-1.15$ points, 95\% CI
+$[-1.77, -0.50]$). A secondary analysis uncovers a hidden $\sim\!4$-point accuracy loss in the
+prompt-only baseline from a formatting-compliance bug that disproportionately penalizes dense,
+equation-heavy outputs; once corrected, the prompt-only baseline beats steering as well. We
+release the full evaluation harness, raw rollout logs, and locked configuration so the result is
+independently reproducible. \textbf{Verdict: NO-GO.} This specific recipe does not improve
+reasoning accuracy on this model and dataset, and the result is robust to a lenient grading
+sensitivity check.
+\end{abstract}
+
+\section{Introduction}
+
+Small language models often under-perform on multi-step arithmetic reasoning relative to their
+larger counterparts, even when the underlying knowledge is present. Two broad families of
+training-free fixes have been proposed: \textbf{prompting} (asking the model to show dense,
+equation-heavy work) and \textbf{activation steering} (nudging the model's internal
+representations toward a ``good reasoning'' direction extracted from contrastive examples,
+without touching any weights).
+
+Recent work (DenseSteer; Ouyang, Lin, and Kim, 2026) reports that steering a small model's
+residual stream toward a ``dense reasoning'' direction---extracted from pairs of verbose vs.\
+compressed solution traces---improves GSM8K accuracy by roughly $+2$ points over an unsteered
+baseline. Separately, Stanford's AxBench (Wu et al., 2025) found that across a range of
+concept-steering tasks, a one-sentence natural-language instruction frequently matches or beats
+activation-steering methods, and that increasing the steering strength monotonically degrades
+fluency. These two results are in tension: is a small, training-free steering vector a reliable
+win, or does it only look that way without a careful prompt baseline and proper noise controls?
+
+Published steering gains on math reasoning are small ($\approx\!+2$ points) and evaluation
+protocols in this literature vary widely in sample size, control arms, and grading strictness---
+exactly the conditions under which a real effect can be indistinguishable from sampling noise, or
+a null effect can look real due to an uncontrolled confound (e.g., answer-formatting compliance).
+We set out to test, under a frozen, adversarially-controlled protocol, whether an on-policy
+version of this steering recipe reproduces on a popular small open model.
+
+\subsection*{Contributions}
+\begin{enumerate}
+  \item A fully pre-registered, controlled replication protocol for activation steering on math
+    reasoning, with two independent null controls and a prompt-only baseline, released as a
+    reusable open-source harness (\texttt{steergate\_p0}).
+  \item An honest negative result: on-policy dense-reasoning steering does not improve, and in
+    fact measurably \emph{hurts}, GSM8K accuracy on \texttt{Qwen2.5-1.5B-Instruct} under our
+    protocol.
+  \item A methodological finding independent of the steering question: naive strict-format
+    grading (requiring a literal \texttt{\textbackslash boxed\{\}} tag) can hide a multi-point
+    accuracy difference between arms when one arm's prompting style changes how often the model
+    remembers to format its answer---and this bias is \emph{not} uniform across arms, so it can
+    silently favor or disfavor whichever arm is being tested.
+\end{enumerate}
+
+\section{Related Work}
+
+\textbf{DenseSteer} (Ouyang, Lin, and Kim, ICML 2026; arXiv:2605.29247) proposes steering small
+models toward a ``dense reasoning'' direction extracted by rewriting a model's own verbose trace
+into a compressed one, reporting $\approx\!+2$ point GSM8K gains on Qwen2.5-1.5B/3B. Our
+on-policy arm (\texttt{steered\_onpolicy}) directly implements the zero-external-API version of
+this recipe.
+
+\textbf{AxBench} (Wu et al., 2025; arXiv:2501.17148) is a large-scale benchmark showing that
+simple prompting baselines frequently match or outperform steering-vector methods, and that
+steering strength has a fluency/efficacy trade-off. Motivates our \texttt{prompt\_dense} baseline
+arm and our use of an explicit fluency/truncation guard.
+
+\textbf{Contrastive Activation Addition / Representation Engineering} (Rimsky et al.; Zou et al.)
+establish the mean-difference extraction method we use (CAA) and the broader linear
+representation hypothesis underlying steering.
+
+\textbf{Arditi et al.} (refusal direction) show that \emph{directional ablation} of a single
+linear direction can remove a specific behavior (refusal) without retraining---the same family of
+technique as the ``abliteration'' used elsewhere in this project, and conceptually related to our
+random/shuffled control construction.
+
+\section{Method}
+
+\subsection{Model and task}
+\texttt{Qwen2.5-1.5B-Instruct}, evaluated on the full GSM8K test set (1{,}319 questions).
+Generation: temperature $0.7$, top-$p$ $0.8$, $k=8$ samples per question, max 1024 new tokens,
+repetition penalty $1.0$. Sampling uses a step-indexed Gumbel-max common-random-number scheme so
+that every arm sees \emph{identical} sampling noise for a given (question, sample) pair,
+independent of batch size---this removes a major source of unpaired variance between arms.
+
+\subsection{Three-way disjoint data split}
+\begin{itemize}
+  \item \textbf{Extraction}: \texttt{GSM8K-train[0:150]}, used to build the on-policy contrastive
+    trace pairs (118 kept, filtered to cases the model itself answered correctly).
+  \item \textbf{Tune}: a held-out slice of \texttt{GSM8K-train} plus 50 WikiText-2 passages, used
+    once, before the test set was ever touched, to sweep candidate layers $\{12,14,16,18,20\}
+    \times \alpha \in \{1.0, 1.5\}$ under a KL-divergence fluency guard (KL $\le 0.15$
+    nats/token vs.\ unsteered) and a truncation-rate guard. \textbf{Locked result: layer 16,
+    $\alpha = 1.5$.}
+  \item \textbf{Test}: the full 1{,}319-question GSM8K test set, untouched until this evaluation.
+\end{itemize}
+
+\subsection{Vector construction}
+For each of 118 kept trace pairs, the model's own verbose (``sparse'') solution is
+deterministically compressed into a dense version (filler sentences stripped, equations and the
+final boxed answer kept)---zero external API calls. The steering vector is the normalized mean
+difference between dense- and sparse-trace activations at the locked layer, scaled to a dosage
+matching the locked $\alpha$ on each token's residual-stream norm.
+
+\subsection{Arms}
+All five arms are paired on identical sampling noise.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{ll}
+\toprule
+Arm & Description \\
+\midrule
+\texttt{base} & Unsteered model, standard CoT instruction \\
+\texttt{prompt\_dense} & Unsteered model, instructed to show explicit equations every step \\
+\texttt{steered\_onpolicy} & Base instruction + the locked on-policy steering vector \\
+\texttt{ctrl\_random} & Base instruction + a random direction, norm-matched to the real vector \\
+\texttt{ctrl\_shuffled} & Base instruction + a vector from the same pairs with flipped labels \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A sixth arm (\texttt{steered\_teacher}, using a frontier-model-rewritten trace as in the original
+DenseSteer recipe) was planned but cut: it requires an external LLM API we did not have access
+to. This is a scope limitation, documented rather than silently dropped.
+
+\subsection{Statistics and the frozen decision rule}
+For each arm, per-question accuracy is the mean correctness over its $k=8$ samples. For a given
+comparison, we compute the paired per-question difference and run a 10{,}000-sample
+question-clustered bootstrap to get a point estimate and 95\%/one-sided-95\% confidence
+intervals. The decision rule, frozen before any steered result was seen:
+
+\textbf{GO} requires the steered arm's lower 95\% CI bound to exceed 0 against all three of
+\texttt{base}, \texttt{ctrl\_random}, and \texttt{ctrl\_shuffled} simultaneously, with point lift
+$\ge +1.0$ points. \textbf{NO-GO} if the one-sided 95\% upper bound is below $+1.0$, or the arm
+fails to beat either control's point estimate. \textbf{BROKEN} if truncation or box-parse failure
+rate rises more than 1 point above base (none of our arms triggered this).
+
+\section{Results}
+
+\subsection{Primary result (strict grading, full protocol)}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Arm & Accuracy & Truncation & \texttt{\textbackslash boxed\{\}} compliance \\
+\midrule
+base & 73.25\% & 0.33\% & 98.64\% \\
+prompt\_dense & 70.66\% & 0.61\% & 94.60\% \\
+\textbf{steered\_onpolicy} & \textbf{72.01\%} & 0.32\% & 98.19\% \\
+ctrl\_random & 73.15\% & 0.32\% & 98.90\% \\
+ctrl\_shuffled & 72.42\% & 0.33\% & 98.09\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Comparison (steered\_onpolicy vs.) & Lift & 95\% CI & Decision \\
+\midrule
+base & $-1.24$ pts & $[-1.86, -0.64]$ & \textbf{NO-GO} \\
+prompt\_dense & $+1.35$ pts & $[+0.42, +2.29]$ & (moot---see \S4.2) \\
+ctrl\_random & $-1.15$ pts & $[-1.77, -0.50]$ & \textbf{NO-GO} \\
+ctrl\_shuffled & $-0.42$ pts & $[-0.95, +0.10]$ & \textbf{NO-GO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Under the frozen rule, a single failed comparison against base or either control is sufficient
+for an overall NO-GO. Steering fails against \textbf{base} and \textbf{ctrl\_random}, with
+confidence intervals excluding zero in both cases---this is not an inconclusive null result, it
+is a \emph{significant negative} effect.
+
+\subsection{Secondary finding: a formatting-compliance confound}
+
+While inspecting failure cases, we found instances where the model produced the exactly correct
+final number but never wrapped it in \texttt{\textbackslash boxed\{\}}, causing the strict grader
+to mark a correct answer as wrong. We quantified this across all five arms:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Arm & \texttt{\textbackslash boxed\{\}} missing & Hidden accuracy loss \\
+\midrule
+base & 1.36\% & 0.60 pts \\
+\textbf{prompt\_dense} & \textbf{5.40\%} & \textbf{3.20 pts} \\
+steered\_onpolicy & 1.81\% & 0.97 pts \\
+ctrl\_random & 1.10\% & 0.48 pts \\
+ctrl\_shuffled & 1.91\% & 1.00 pts \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The bug disproportionately affects \texttt{prompt\_dense}. Re-grading all five arms with a
+lenient parser (credit a correct final number even without a box) and recomputing the same four
+comparisons:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Comparison (lenient grading) & Lift & 95\% CI & Decision \\
+\midrule
+vs.\ base & $-0.87$ pts & $[-1.45, -0.27]$ & \textbf{NO-GO} \\
+vs.\ prompt\_dense & $-0.88$ pts & $[-1.74, -0.01]$ & \textbf{NO-GO (flipped from GO)} \\
+vs.\ ctrl\_random & $-0.64$ pts & $[-1.27, -0.03]$ & \textbf{NO-GO} \\
+vs.\ ctrl\_shuffled & $-0.44$ pts & $[-0.94, +0.07]$ & \textbf{NO-GO} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Under lenient grading, steering loses to \emph{every single arm}, including \texttt{prompt\_dense}.
+The strict-grading ``win'' against \texttt{prompt\_dense} was entirely an artifact of unfairly
+penalizing the prompt baseline's formatting habits, not a genuine steering advantage.
+
+\section{Discussion}
+
+Why might on-policy steering fail here where DenseSteer reports a gain? Several
+non-exclusive possibilities, none of which we can distinguish with this dataset alone: (1)
+\textbf{trace quality}---our on-policy traces are self-compressed with zero external
+supervision, whereas DenseSteer's main numbers may rely on teacher-rewritten traces (our
+\texttt{steered\_teacher} arm, which would test this directly, was cut for lack of API access);
+(2) \textbf{harness/prompt differences}---GSM8K scoring is known to be sensitive to prompt
+template and extraction method across papers; (3) \textbf{a genuinely small or absent effect}
+for this specific layer/scale/model combination, given that published steering gains in this
+space are already close to the noise floor. We do not claim to have falsified DenseSteer's
+reported result---only that this specific, carefully-controlled on-policy replication on this
+model does not reproduce a positive effect, and in fact shows a significant negative one against
+two independent null controls.
+
+\subsection*{Limitations}
+The teacher-distilled arm was cut (no external LLM API available). The hyperparameter sweep in
+the tune phase was trimmed under same-day time pressure ($N=80$ tune questions,
+$\alpha \in \{1.0, 1.5\}$ instead of the originally planned $N=200$,
+$\alpha \in \{0.5, 1.0, 1.5, 2.0\}$); a wider sweep might locate a better-performing
+(layer, $\alpha$) pair. This is a documented deviation, not a silent one. We test a single model
+and a single dataset; we make no claim about transfer to other model families, sizes, or
+reasoning benchmarks.
+
+\section{Conclusion}
+
+Under a pre-registered, adversarially-controlled replication protocol---paired sampling, two
+independent null controls, and a prompt-only baseline---on-policy dense-reasoning activation
+steering does not improve GSM8K accuracy on \texttt{Qwen2.5-1.5B-Instruct}, and significantly
+\emph{underperforms} both the unsteered model and a random-direction control. This result is
+stable under a lenient grading sensitivity check, which additionally reveals that a
+formatting-compliance confound can mask a multi-point accuracy difference in strict-grading
+comparisons. We release the full harness, locked configuration, and raw per-question logs so
+this result can be independently verified, extended to other models, or falsified.
+
+\section*{Reproducibility}
+Code, locked configuration, and raw per-question logs for all five arms are available at
+\url{https://github.com/yaad25/steergate}.
+
+\begin{thebibliography}{9}
+
+\bibitem{densesteer}
+Ouyang, Y., Lin, S., \& Kim, J. (2026). DenseSteer: Steering Small Language Models towards Dense
+Math Reasoning. \emph{ICML 2026}. arXiv:2605.29247.
+
+\bibitem{axbench}
+Wu, Z., Arora, A., Geiger, A., Wang, Z., Huang, J., Jurafsky, D., Manning, C.~D., \& Potts, C.
+(2025). AxBench: Steering LLMs? Even Simple Baselines Outperform Sparse Autoencoders.
+arXiv:2501.17148.
+
+\bibitem{caa}
+Rimsky, N. et al. Steering Llama 2 via Contrastive Activation Addition.
+
+\bibitem{repe}
+Zou, A. et al. Representation Engineering: A Top-Down Approach to AI Transparency.
+
+\bibitem{arditi}
+Arditi, A. et al. Refusal in Language Models Is Mediated by a Single Direction.
+
+\end{thebibliography}
+
+\end{document}

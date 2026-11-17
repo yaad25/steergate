@@ -1,0 +1,108 @@
+{
+ "model": "Qwen/Qwen2.5-1.5B-Instruct",
+ "layer": 16,
+ "alpha": 1.5,
+ "vector_path": "vectors/Qwen_Qwen2.5-1.5B-Instruct_onpolicy.npz",
+ "vector_sha256": "711780113bd53fe9cf7552364047b90b28b069cee5ed9abe4693ac642ccdd00e",
+ "base_tune_accuracy": 0.825,
+ "sweep_results": [
+  {
+   "layer": 12,
+   "alpha": 1.0,
+   "tune_acc": 0.8125,
+   "tune_trunc": 0.0375,
+   "kl": 0.00035873146494850514,
+   "ok": false
+  },
+  {
+   "layer": 12,
+   "alpha": 1.5,
+   "tune_acc": 0.8375,
+   "tune_trunc": 0.025,
+   "kl": 0.0007937461201800033,
+   "ok": true
+  },
+  {
+   "layer": 14,
+   "alpha": 1.0,
+   "tune_acc": 0.8375,
+   "tune_trunc": 0.025,
+   "kl": 0.00038557118910830467,
+   "ok": true
+  },
+  {
+   "layer": 14,
+   "alpha": 1.5,
+   "tune_acc": 0.85,
+   "tune_trunc": 0.025,
+   "kl": 0.0008509902772493661,
+   "ok": true
+  },
+  {
+   "layer": 16,
+   "alpha": 1.0,
+   "tune_acc": 0.85,
+   "tune_trunc": 0.0125,
+   "kl": 0.0004306563994032331,
+   "ok": true
+  },
+  {
+   "layer": 16,
+   "alpha": 1.5,
+   "tune_acc": 0.8625,
+   "tune_trunc": 0.025,
+   "kl": 0.0009518059313995764,
+   "ok": true
+  },
+  {
+   "layer": 18,
+   "alpha": 1.0,
+   "tune_acc": 0.8125,
+   "tune_trunc": 0.025,
+   "kl": 0.00040252273669466376,
+   "ok": true
+  },
+  {
+   "layer": 18,
+   "alpha": 1.5,
+   "tune_acc": 0.8,
+   "tune_trunc": 0.025,
+   "kl": 0.0008852786582428961,
+   "ok": true
+  },
+  {
+   "layer": 20,
+   "alpha": 1.0,
+   "tune_acc": 0.8375,
+   "tune_trunc": 0.025,
+   "kl": 0.0003276781001477502,
+   "ok": true
+  },
+  {
+   "layer": 20,
+   "alpha": 1.5,
+   "tune_acc": 0.825,
+   "tune_trunc": 0.0125,
+   "kl": 0.0007160074933199212,
+   "ok": true
+  }
+ ],
+ "n_traces_used": 118,
+ "extract_n": 150,
+ "tune_n": 80,
+ "layers_swept": [
+  12,
+  14,
+  16,
+  18,
+  20
+ ],
+ "alphas_swept": [
+  1.0,
+  1.5
+ ],
+ "deviation_note": "reduced from protocol N=200 tune / 4-alpha grid to N=80 / 2-alpha grid for same-day Gate 1.5 lock under time pressure; full sweep can be rerun later",
+ "arm": "steered_onpolicy",
+ "teacher_arm_cut": "no external LLM API available; teacher arm skipped, documented",
+ "wall_seconds": 1395.841115951538
+}

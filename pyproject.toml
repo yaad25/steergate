@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "steergate"
+version = "0.0.1"
+description = "A checker that tells you whether a steering vector's gain on an LLM is real or just sampling noise."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "yaad25" }]
+keywords = ["llm", "activation-steering", "evaluation", "gsm8k", "reproducibility", "control-vector"]
+dependencies = [
+    "torch>=2.1",
+    "transformers>=4.40",
+    "datasets>=2.18",
+    "safetensors>=0.4",
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/yaad25/steergate"
+
+# NOTE: no [project.scripts] console entry yet. The `steergate` CLI is built
+# only AFTER Gate 2 passes (see PLAN.md). Until then this is the evaluator only.
+
+[tool.setuptools]
+packages = ["steergate_p0"]
